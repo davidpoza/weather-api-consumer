@@ -15,6 +15,7 @@
   "dependencies": {
     "basic-ftp": "^4.6.6",
     "dotenv": "^10.0.0",
+    "encoding": "^0.1.13",
     "node-fetch": "^2.6.1"
   }
 }

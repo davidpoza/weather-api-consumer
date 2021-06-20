@@ -11,10 +11,11 @@ const FTP_PASSWORD = process.env.FTP_PASSWORD;
 const FTP_BASE_PATH = process.env.FTP_BASE_PATH; // without trailing backslash
 const LOCAL_PATH = process.env.LOCAL_PATH; // without trailing backslash
 const OPENWEATHERMAP_API_KEY = process.env.OPENWEATHERMAP_API_KEY;
+const TOMORROWIO_API_KEY = process.env.TOMORROWIO_API_KEY;
+const AEMET_API_KEY = process.env.AEMET_API_KEY;
 
-
-const TOMORROWIO_ENDPOINT = '';
-const AEMET_ENDPOINT = '';
+const TOMORROWIO_ENDPOINT = `https://api.tomorrow.io/v4/timelines?units=metric&apikey=${TOMORROWIO_API_KEY}`;
+const AEMET_ENDPOINT = 'https://opendata.aemet.es/opendata/api';
 const OPENWEATHERMAP_ENDPOINT = `https://api.openweathermap.org/data/2.5/onecall?appid=${OPENWEATHERMAP_API_KEY}&units=metric`;
 
 const locations = [
@@ -25,8 +26,10 @@ const locations = [
     pollen: true,
     air_quality: true,
     text_forecast: true,
+    provinceCode: 28, // AEMET
   }
 ];
+
 
 function transformCurrent(data) {
   return ({
@@ -71,13 +74,21 @@ function transformForecastHour(data) {
   });
 }
 
-async function fetchWeatherApi(lon, lat) {
+function transformPollen(data) {
+  return ({
+    treeIndex: data.data.timelines?.[0].intervals?.[0].values?.treeIndex,
+    grassIndex: data.data.timelines?.[0].intervals?.[0].values?.grassIndex,
+    weedIndex: data.data.timelines?.[0].intervals?.[0].values?.weedIndex,
+  });
+}
+
+async function fetchForecast(lon, lat) {
   let data;
   try {
     const res = await fetch(`${OPENWEATHERMAP_ENDPOINT}&lon=${lon}&lat=${lat}`);
     data = await res.json();
   } catch (Error) {
-    console.log('Error during weatherapi current fetch');
+    console.log('Error during forecast fetch');
   }
 
   return ({
@@ -87,21 +98,64 @@ async function fetchWeatherApi(lon, lat) {
   });
 }
 
-async function buildFinalJson(lon, lat) {
-  const weatherapi = await fetchWeatherApi(lon, lat);
+async function fetchPollen(lon, lat) {
+  let data;
+  try {
+    const res = await fetch(`${TOMORROWIO_ENDPOINT}&location=${lat},${lon}&fields=treeIndex,grassIndex,weedIndex`);
+    data = await res.json();
+  } catch (Error) {
+    console.log('Error during pollen fetch');
+  }
+
+  return (transformPollen(data));
+}
+
+async function fetchAemetTextForecast(provinceCode) {
+  let dataUrl, data;
+  try {
+    const res = await fetch(`${AEMET_ENDPOINT}/prediccion/provincia/manana/${provinceCode}`, {
+      headers: {
+        api_key: AEMET_API_KEY,
+      },
+    });
+    dataUrl = await res.json();
+  } catch (Error) {
+    console.log('Error during aemet first fetch');
+  }
+  try {
+    const res = await fetch(dataUrl.datos, {
+      headers: {
+        api_key: AEMET_API_KEY,
+      },
+    });
+    data = await res.textConverted();
+  } catch (Error) {
+    console.log('Error during aemet second fetch', Error);
+  }
+  return (data);
+}
+
+async function buildFinalJson(lon, lat, { pollen, provinceCode }) {
+  let pollenData;
+  const forecastData = await fetchForecast(lon, lat);
+  if (pollen) pollenData = await fetchPollen(lon, lat);
+  const textForcast = await fetchAemetTextForecast(provinceCode);
   return({
     ts: new Date().getTime(),
     data: {
       lon,
       lat,
-      ...weatherapi,
+      ...forecastData,
+      pollen: pollenData,
+      textForecast: textForcast
     }
   });
 }
 
 async function runJob() {
   for (loc of locations) {
-    console.log(await (await buildFinalJson(loc.lon, loc.lat)).data.hourly_forecast);
+    const data = await buildFinalJson(loc.lon, loc.lat, { pollen: loc.pollen, provinceCode: loc.provinceCode });
+    Fs.writeFileSync(`${loc.name}.json`, JSON.stringify(data));
   };
   process.exit();
 }
