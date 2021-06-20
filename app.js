@@ -27,6 +27,11 @@ const locations = [
     air_quality: true,
     text_forecast: true,
     provinceCode: 28, // AEMET
+  },
+  {
+    name: 'penalara',
+    lat: '40.850131',
+    lon: '-3.9593821',
   }
 ];
 
@@ -103,12 +108,8 @@ function transformPollen(data) {
 
 async function fetchForecast(lon, lat) {
   let data;
-  try {
-    const res = await fetch(`${OPENWEATHERMAP_ENDPOINT}&lon=${lon}&lat=${lat}`);
-    data = await res.json();
-  } catch (Error) {
-    console.log('Error during forecast fetch');
-  }
+  const res = await fetch(`${OPENWEATHERMAP_ENDPOINT}&lon=${lon}&lat=${lat}`);
+  data = await res.json();
 
   return ({
     current: transformCurrent(data.current),
@@ -119,46 +120,35 @@ async function fetchForecast(lon, lat) {
 
 async function fetchPollen(lon, lat) {
   let data;
-  try {
-    const res = await fetch(`${TOMORROWIO_ENDPOINT}&location=${lat},${lon}&fields=treeIndex,grassIndex,weedIndex`);
-    data = await res.json();
-  } catch (Error) {
-    console.log('Error during pollen fetch');
-  }
-
+  const res = await fetch(`${TOMORROWIO_ENDPOINT}&location=${lat},${lon}&fields=treeIndex,grassIndex,weedIndex`);
+  data = await res.json();
   return (transformPollen(data));
 }
 
 async function fetchAemetTextForecast(provinceCode) {
   let dataUrl, data;
-  try {
-    const res = await fetch(`${AEMET_ENDPOINT}/prediccion/provincia/manana/${provinceCode}`, {
-      headers: {
-        api_key: AEMET_API_KEY,
-      },
-    });
-    dataUrl = await res.json();
-  } catch (Error) {
-    console.log('Error during aemet first fetch');
-  }
-  try {
-    const res = await fetch(dataUrl.datos, {
-      headers: {
-        api_key: AEMET_API_KEY,
-      },
-    });
-    data = await res.textConverted();
-  } catch (Error) {
-    console.log('Error during aemet second fetch', Error);
-  }
+  const firstRes = await fetch(`${AEMET_ENDPOINT}/prediccion/provincia/manana/${provinceCode}`, {
+    headers: {
+      api_key: AEMET_API_KEY,
+    },
+  });
+  dataUrl = await firstRes.json();
+
+  const secondRes = await fetch(dataUrl.datos, {
+    headers: {
+      api_key: AEMET_API_KEY,
+    },
+  });
+  data = await secondRes.textConverted();
+
   return (data);
 }
 
 async function buildFinalJson(lon, lat, { pollen, provinceCode }) {
-  let pollenData;
+  let pollenData, textForcast;
   const forecastData = await fetchForecast(lon, lat);
   if (pollen) pollenData = await fetchPollen(lon, lat);
-  const textForcast = await fetchAemetTextForecast(provinceCode);
+  if (provinceCode) textForcast = await fetchAemetTextForecast(provinceCode);
   return({
     ts: new Date().getTime(),
     data: {
@@ -173,8 +163,16 @@ async function buildFinalJson(lon, lat, { pollen, provinceCode }) {
 
 async function runJob() {
   for (loc of locations) {
-    const data = await buildFinalJson(loc.lon, loc.lat, { pollen: loc.pollen, provinceCode: loc.provinceCode });
-    Fs.writeFileSync(`${loc.name}.json`, JSON.stringify(data));
+    try {
+      const data = await buildFinalJson(loc.lon, loc.lat, {
+        pollen: loc?.pollen || false,
+        provinceCode: loc?.provinceCode || null
+       });
+      Fs.writeFileSync(`${loc.name}.json`, JSON.stringify(data));
+    } catch(Error) {
+      console.log('Some fetch has fail', Error);
+      process.exit();
+    }
     await uploadFile(`${__dirname}/${loc.name}.json`, `${FTP_BASE_PATH}/${loc.name}.json`);
   };
   process.exit();
