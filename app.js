@@ -30,6 +30,25 @@ const locations = [
   }
 ];
 
+async function uploadFile(sourceFilePath, targetFilePath) {
+  const client = new ftp.Client();
+  client.ftp.verbose = true;
+  try {
+    await client.access({
+      host: FTP_HOST,
+      user: FTP_USER,
+      password: FTP_PASSWORD,
+      secure: false
+    })
+    console.log(await client.list());
+    await client.ensureDir(Path.dirname(targetFilePath));
+    await client.uploadFrom(sourceFilePath, targetFilePath);
+  }
+  catch(err) {
+    console.log(err)
+  }
+  client.close()
+}
 
 function transformCurrent(data) {
   return ({
@@ -156,6 +175,7 @@ async function runJob() {
   for (loc of locations) {
     const data = await buildFinalJson(loc.lon, loc.lat, { pollen: loc.pollen, provinceCode: loc.provinceCode });
     Fs.writeFileSync(`${loc.name}.json`, JSON.stringify(data));
+    await uploadFile(`${__dirname}/${loc.name}.json`, `${FTP_BASE_PATH}/${loc.name}.json`);
   };
   process.exit();
 }
