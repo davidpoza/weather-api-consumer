@@ -4,6 +4,7 @@ const Fs = require('fs');
 const Path = require('path');
 const ftp = require('basic-ftp');
 const fetch = require('node-fetch');
+const air = require('aire-madrid');
 
 const FTP_HOST = process.env.FTP_HOST;
 const FTP_USER= process.env.FTP_USER;
@@ -171,6 +172,62 @@ async function buildFinalJson(lon, lat, { pollen, provinceCode }) {
   });
 }
 
+async function calculatePollutionLevel() {
+  // returns how many stations meet given level
+  function checkStationsMeetsLevel(stationsArray, level) {
+    return stationsArray.filter(st => (st === level)).length;
+  }
+
+  const LEVEL_1 = 'preaviso';
+  const LEVEL_2 = 'aviso';
+  const LEVEL_3 = 'alerta';
+  const LEVELS = [LEVEL_3, LEVEL_2, LEVEL_1];
+
+  const STATION_LIMIT_PER_LEVEL = {};
+
+
+  const zones = {
+    zone1: [4, 8, 11, 35, 38, 39, 47, 48, 49, 50],
+    zone2: [36, 40, 54],
+    zone3: [16, 27, 55, 57, 59, 60],
+    zone4: [/**24, */ 58], // casa de campo es la 24 pero no está disponible
+    zone5: [17, 18, 56],
+  };
+
+  const results = {
+    zone1: {},
+    zone2: {},
+    zone3: {},
+    zone4: {},
+    zone5: {},
+  };
+
+  for (z of Object.keys(zones)) {
+    const stationReadings = await air.getReadings({ stations: zones[z], pollutants: [8]});
+    stationReadings.forEach((st, sti) => {
+      st.pollutants?.[0]?.values.forEach((v, i, values) => {
+        if (v > 400 && values?.[i+1] > 400 && values?.[i+2] > 400) {
+          results[z][stationReadings[sti].id] = LEVEL_3;
+        } else if (v > 200 && values?.[i+1] > 200 && values?.[i+2] > 200) {
+          results[z][stationReadings[sti].id] = LEVEL_2;
+        } else if (v > 20 && values?.[i+1] > 20) {
+          results[z][stationReadings[sti].id] = LEVEL_1;
+        }
+      })
+    });
+  }
+
+  LEVELS.forEach(lvl => {
+    Object.keys(zones).forEach(z => {
+      const zoneStationsOnThisLevel = checkStationsMeetsLevel(zones[z], lvl);
+      console.log(zoneStationsOnThisLevel, 'stations on ', z , 'meets level ', lvl);
+    });
+  });
+
+
+  console.log(results);
+}
+
 async function runJob() {
   for (loc of locations) {
     try {
@@ -189,5 +246,6 @@ async function runJob() {
 }
 
 (async () => {
-  await runJob();
+  //await runJob();
+  await calculatePollutionLevel();
 })()
