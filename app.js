@@ -5,6 +5,7 @@ const Path = require('path');
 const ftp = require('basic-ftp');
 const fetch = require('node-fetch');
 const air = require('aire-madrid');
+const dayjs = require('dayjs');
 
 const FTP_HOST = process.env.FTP_HOST;
 const FTP_USER= process.env.FTP_USER;
@@ -172,10 +173,104 @@ async function buildFinalJson(lon, lat, { pollen, provinceCode }) {
   });
 }
 
-async function calculatePollutionLevel() {
+async function calculatePollution() {
+  const today = `${dayjs().format('YYYYMMDD')}.json`;
+  const yesterday = `${dayjs().subtract(1, 'day').format('YYYYMMDD')}.json`;
+  const befYesterday = `${dayjs().subtract(2, 'day').format('YYYYMMDD')}.json`;
+  const befbefYesterday = `${dayjs().subtract(3, 'day').format('YYYYMMDD')}.json`;
+  const toDelete = `${dayjs().subtract(4, 'day').format('YYYYMMDD')}.json`; // we only save 4 days info
+
+  let totalStationsByZone = {
+    zone1: {},
+    zone2: {},
+    zone3: {},
+    zone4: {},
+    zone5: {},
+  };
+
+  let totalStationsByZoneYes,
+  totalStationsByZoneBefYes,
+  totalStationsByZoneBefBefYes;
+
+  if (Fs.existsSync(toDelete)) {
+    console.log('deleting: ', toDelete);
+    fs.unlinkSync(toDelete);
+  }
+
+  if (Fs.existsSync(yesterday)) {
+    totalStationsByZoneYes = JSON.parse(Fs.readFileSync(yesterday, { encoding:'utf8', flag:'r' }));
+  }
+
+  if (Fs.existsSync(befYesterday)) {
+    totalStationsByZoneBefYes = JSON.parse(Fs.readFileSync(befYesterday, { encoding:'utf8', flag:'r' }));
+  }
+
+  if (Fs.existsSync(befbefYesterday)) {
+    totalStationsByZoneBefBefYes = JSON.parse(Fs.readFileSync(befbefYesterday, { encoding:'utf8', flag:'r' }));
+  }
+
   // returns how many stations meet given level
-  function checkStationsMeetsLevel(stationsArray, level) {
-    return stationsArray.filter(st => (st === level)).length;
+  function checkStationsMeetsLevel(zoneStationsObj, level) {
+    // console.log("comprobando cuales de las estaciones:", Object.keys(zoneStationsObj), "tienen nivel ", level)
+    return Object.keys(zoneStationsObj).filter(st => (zoneStationsObj[st] === level)).length;
+  }
+
+  function calculateScene() {
+    // un día en nivel alerta (tres estaciones)
+    if (
+      Object.keys(totalStationsByZone).some(zone => totalStationsByZone[zone][LEVEL_3] >= 3)
+    ) {
+      return 5;
+    }
+
+    // se superan 4 dias el nivel aviso
+    if (
+      totalStationsByZone && totalStationsByZoneYes && totalStationsByZoneBefYes && totalStationsByZoneBefBefYes
+      && Object.keys(totalStationsByZone).some(zone => totalStationsByZone[zone][LEVEL_2] >= 2)
+      && Object.keys(totalStationsByZoneYes).some(zone => totalStationsByZoneYes[zone][LEVEL_2] >= 2)
+      && Object.keys(totalStationsByZoneBefYes).some(zone => totalStationsByZoneBefYes[zone][LEVEL_2] >= 2)
+      && Object.keys(totalStationsByZoneBefBefYes).some(zone => totalStationsByZoneBefBefYes[zone][LEVEL_2] >= 2)
+    ) {
+      return 4;
+    }
+
+    // tres días en preaviso o 2 en aviso
+    if (
+      totalStationsByZone && totalStationsByZoneYes && totalStationsByZoneBefYes
+      && (
+        (
+          Object.keys(totalStationsByZone).some(zone => totalStationsByZone[zone][LEVEL_1] >= 2)
+          && Object.keys(totalStationsByZoneYes).some(zone => totalStationsByZoneYes[zone][LEVEL_1] >= 2)
+          && Object.keys(totalStationsByZoneBefYes).some(zone => totalStationsByZoneBefYes[zone][LEVEL_1] >= 2)
+        )
+        ||
+        (
+          Object.keys(totalStationsByZone).some(zone => totalStationsByZone[zone][LEVEL_2] >= 2)
+          && Object.keys(totalStationsByZoneYes).some(zone => totalStationsByZoneYes[zone][LEVEL_2] >= 2)
+        )
+      )
+    ) {
+      return 3;
+    }
+
+    // se supera el nivel de preaviso en 2 días consecutivos o en un día el nivel de aviso (superiores a 200 durante tres horas consecutivas en dos estaciones de la misma zona)
+    if (
+      totalStationsByZone && totalStationsByZoneYes
+      && (
+        (
+          Object.keys(totalStationsByZone).some(zone => totalStationsByZone[zone][LEVEL_1] >= 2)
+          && Object.keys(totalStationsByZoneYes).some(zone => totalStationsByZoneYes[zone][LEVEL_1] >= 2)
+        )
+        ||
+        Object.keys(totalStationsByZone).some(zone => totalStationsByZone[zone][LEVEL_2] >= 2)
+      )
+    ) {
+      return 2;
+    }
+    // durante 1 día se supera el nivel de preaviso (niveles superiores a 180 durante dos horas consecutivas en dos estaciones de la misma zona)
+    if (Object.keys(totalStationsByZone).some(zone => totalStationsByZone[zone][LEVEL_1] >= 2)) return 1;
+
+    return 0;
   }
 
   const LEVEL_1 = 'preaviso';
@@ -187,7 +282,7 @@ async function calculatePollutionLevel() {
 
 
   const zones = {
-    zone1: [4, 8, 11, 35, 38, 39, 47, 48, 49, 50],
+    zone1: [4],
     zone2: [36, 40, 54],
     zone3: [16, 27, 55, 57, 59, 60],
     zone4: [/**24, */ 58], // casa de campo es la 24 pero no está disponible
@@ -206,7 +301,7 @@ async function calculatePollutionLevel() {
     const stationReadings = await air.getReadings({ stations: zones[z], pollutants: [8]});
     stationReadings.forEach((st, sti) => {
       st.pollutants?.[0]?.values.forEach((v, i, values) => {
-        if (v > 400 && values?.[i+1] > 400 && values?.[i+2] > 400) {
+        if ((v > 400 && values?.[i+1] > 400 && values?.[i+2] > 400) || (z === 'zone4' && v > 400 && values?.[i+1] > 400)) {
           results[z][stationReadings[sti].id] = LEVEL_3;
         } else if (v > 200 && values?.[i+1] > 200 && values?.[i+2] > 200) {
           results[z][stationReadings[sti].id] = LEVEL_2;
@@ -219,13 +314,14 @@ async function calculatePollutionLevel() {
 
   LEVELS.forEach(lvl => {
     Object.keys(zones).forEach(z => {
-      const zoneStationsOnThisLevel = checkStationsMeetsLevel(zones[z], lvl);
-      console.log(zoneStationsOnThisLevel, 'stations on ', z , 'meets level ', lvl);
+      totalStationsByZone[z][lvl] = checkStationsMeetsLevel(results[z], lvl);
     });
   });
 
+  console.log(totalStationsByZone);
+  Fs.writeFileSync(today, JSON.stringify(totalStationsByZone));
 
-  console.log(results);
+  return calculateScene();
 }
 
 async function runJob() {
@@ -247,5 +343,7 @@ async function runJob() {
 
 (async () => {
   //await runJob();
-  await calculatePollutionLevel();
+  const pollutionScene = await calculatePollution();
+  Fs.writeFileSync('scene.json', JSON.stringify(pollutionScene));
+  await uploadFile(`${__dirname}/scene.json`, `${FTP_BASE_PATH}/pollution_scene.json`);
 })()
