@@ -98,9 +98,9 @@ class Utils {
     data = await res.json();
 
     return ({
-      current: transformCurrent(data.current),
-      daily_forecast: data.daily.map(f => transformForecastDay(f)),
-      hourly_forecast: data.hourly.map(f => transformForecastHour(f)),
+      current: Utils.transformCurrent(data.current),
+      daily_forecast: data.daily.map(f => Utils.transformForecastDay(f)),
+      hourly_forecast: data.hourly.map(f => Utils.transformForecastHour(f)),
     });
   }
 
@@ -108,7 +108,7 @@ class Utils {
     let data;
     const res = await fetch(`${TOMORROWIO_ENDPOINT}&location=${lat},${lon}&fields=treeIndex,grassIndex,weedIndex`);
     data = await res.json();
-    return (transformPollen(data));
+    return (Utils.transformPollen(data));
   }
 
   static async fetchAemetTextForecast(provinceCode) {
@@ -132,9 +132,9 @@ class Utils {
 
   static async buildFinalJson(lon, lat, { pollen, provinceCode }) {
     let pollenData, textForcast;
-    const forecastData = await fetchForecast(lon, lat);
-    if (pollen) pollenData = await fetchPollen(lon, lat);
-    if (provinceCode) textForcast = await fetchAemetTextForecast(provinceCode);
+    const forecastData = await Utils.fetchForecast(lon, lat);
+    if (pollen) pollenData = await Utils.fetchPollen(lon, lat);
+    if (provinceCode) textForcast = await Utils.fetchAemetTextForecast(provinceCode);
     return({
       ts: new Date().getTime(),
       data: {
