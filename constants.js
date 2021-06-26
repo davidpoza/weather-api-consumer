@@ -32,6 +32,14 @@ const LEVEL_1 = 'preaviso';
 const LEVEL_2 = 'aviso';
 const LEVEL_3 = 'alerta';
 
+const ZONES = {
+  zone1: [4],
+  zone2: [36, 40, 54],
+  zone3: [16, 27, 55, 57, 59, 60],
+  zone4: [24, 58],
+  zone5: [17, 18, 56],
+};
+
 const FTP_HOST = process.env.FTP_HOST;
 const FTP_USER= process.env.FTP_USER;
 const FTP_PASSWORD = process.env.FTP_PASSWORD;
@@ -60,5 +68,6 @@ module.exports = {
   AEMET_API_KEY,
   TOMORROWIO_ENDPOINT,
   AEMET_ENDPOINT,
-  OPENWEATHERMAP_ENDPOINT
+  OPENWEATHERMAP_ENDPOINT,
+  ZONES
 };

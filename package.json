@@ -13,9 +13,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "aire-madrid": "git+https://github.com/davidpoza/aire-madrid.git",
     "basic-ftp": "^4.6.6",
+    "dayjs": "^1.10.5",
     "dotenv": "^10.0.0",
     "encoding": "^0.1.13",
+    "jest": "^27.0.5",
     "node-fetch": "^2.6.1"
   }
 }
