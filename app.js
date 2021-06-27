@@ -2,7 +2,7 @@ const Fs = require('fs');
 const Utils = require('./utils');
 const { locations, FTP_BASE_PATH } = require('./constants');
 
-async function runJob() {
+async function runForecastJob() {
   for (loc of locations) {
     try {
       const data = await Utils.buildFinalJson(loc.lon, loc.lat, {
@@ -16,12 +16,16 @@ async function runJob() {
     }
     await Utils.uploadFile(`${__dirname}/${loc.name}.json`, `${FTP_BASE_PATH}/${loc.name}.json`);
   };
-  process.exit();
 }
 
-(async () => {
-  await runJob();
+async function runPollutionJob() {
   const pollutionScene = await Utils.calculatePollution();
   Fs.writeFileSync('scene.json', JSON.stringify(pollutionScene));
   await Utils.uploadFile(`${__dirname}/scene.json`, `${FTP_BASE_PATH}/pollution_scene.json`);
+}
+
+(async () => {
+  await runForecastJob();
+  await runPollutionJob();
+  process.exit();
 })()
