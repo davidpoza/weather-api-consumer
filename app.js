@@ -9,7 +9,7 @@ async function runForecastJob() {
         pollen: loc?.pollen || false,
         provinceCode: loc?.provinceCode || null
        });
-      Fs.writeFileSync(`${loc.name}.json`, JSON.stringify(data));
+      Fs.writeFileSync(`${__dirname}/${loc.name}.json`, JSON.stringify(data));
     } catch(Error) {
       console.log('Some fetch has fail', Error);
       process.exit();
@@ -20,7 +20,7 @@ async function runForecastJob() {
 
 async function runPollutionJob() {
   const pollutionScene = await Utils.calculatePollution();
-  Fs.writeFileSync('scene.json', JSON.stringify(pollutionScene));
+  Fs.writeFileSync(`${__dirname}/scene.json`, JSON.stringify(pollutionScene));
   await Utils.uploadFile(`${__dirname}/scene.json`, `${FTP_BASE_PATH}/pollution_scene.json`);
 }
 
