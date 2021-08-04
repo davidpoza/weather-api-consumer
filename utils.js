@@ -277,7 +277,10 @@ class Utils {
     });
 
     Fs.writeFileSync(today, JSON.stringify(totalStationsByZone));
-    return Utils.calculateScene(totalStationsByZone, totalStationsByZoneYes, totalStationsByZoneBefYes, totalStationsByZoneBefBefYes);
+    return {
+      ts: new Date().getTime(),
+      scene: Utils.calculateScene(totalStationsByZone, totalStationsByZoneYes, totalStationsByZoneBefYes, totalStationsByZoneBefBefYes)
+    };
   }
 }
 
